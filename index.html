@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>All Semiconductor Knowledge — Interactive Force-Directed Graph</title>
+<meta name="description" content="An expandable, draggable semiconductor knowledge graph spanning physics, materials, devices, fabrication, design, packaging, testing, reliability and industry.">
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<style>
+  :root {
+    --bg:#f7f8fb; --panel:#ffffff; --ink:#111827; --muted:#5f6875; --line:#d9e0e8;
+    --accent:#0b6bcb; --shadow:0 14px 38px rgba(15,23,42,.12);
+    --header-h:66px; --panel-w:350px;
+  }
+  * { box-sizing:border-box; }
+  html,body { width:100%; height:100%; margin:0; overflow:hidden; background:var(--bg); color:var(--ink);
+    font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; }
+  button,input { font:inherit; }
+  button { color:var(--ink); }
+  #app { width:100%; height:100%; display:grid; grid-template-columns:var(--panel-w) 1fr; grid-template-rows:var(--header-h) 1fr; }
+  header {
+    grid-column:1 / -1; display:flex; align-items:center; gap:14px; padding:0 18px;
+    background:#fff; border-bottom:1px solid var(--line); z-index:20;
+  }
+  .brand-mark {
+    width:42px; height:42px; border-radius:12px; display:grid; place-items:center; flex:none;
+    background:linear-gradient(145deg,#dff3ff,#edf0ff); border:1px solid #b9d4e8; font-weight:900; color:#17324d;
+  }
+  .title-wrap { min-width:0; }
+  h1 { font-size:18px; line-height:1.15; margin:0; letter-spacing:-.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .subtitle { font-size:12px; color:var(--muted); margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .header-actions { margin-left:auto; display:flex; gap:8px; }
+  .icon-btn,.btn {
+    border:1px solid #cbd5e1; background:#fff; border-radius:10px; min-height:38px; padding:8px 11px;
+    cursor:pointer; transition:.15s ease; display:inline-flex; align-items:center; justify-content:center; gap:7px;
+  }
+  .icon-btn:hover,.btn:hover { border-color:#8aa9c0; background:#f7fbff; }
+  .btn.primary { background:#0b6bcb; color:#fff; border-color:#0b6bcb; }
+  .btn.primary:hover { background:#095baa; }
+  .btn.small { min-height:32px; padding:6px 9px; font-size:12px; }
+  #panel {
+    grid-column:1; grid-row:2; background:var(--panel); border-right:1px solid var(--line);
+    overflow:auto; overscroll-behavior:contain; z-index:15; padding:14px;
+  }
+  #graph-wrap { grid-column:2; grid-row:2; position:relative; min-width:0; min-height:0; overflow:hidden; }
+  #graph { width:100%; height:100%; display:block; touch-action:none; background:
+      radial-gradient(circle at 72% 18%, rgba(170,220,255,.26), transparent 32%),
+      radial-gradient(circle at 17% 84%, rgba(216,220,255,.24), transparent 30%),
+      #f9fbfd; }
+  .section { border-bottom:1px solid #e8edf2; padding:0 0 14px; margin:0 0 14px; }
+  .section:last-child { border-bottom:0; }
+  .section-title { font-size:12px; font-weight:800; text-transform:uppercase; letter-spacing:.07em; margin:0 0 9px; color:#374151; }
+  .search-wrap { position:relative; }
+  #search {
+    width:100%; height:42px; border:1px solid #cbd5e1; border-radius:11px; padding:0 38px 0 12px;
+    outline:none; color:#111; background:#fff;
+  }
+  #search:focus { border-color:#0b6bcb; box-shadow:0 0 0 3px rgba(11,107,203,.12); }
+  .search-clear { position:absolute; right:7px; top:7px; border:0; background:transparent; width:28px; height:28px; cursor:pointer; font-size:18px; }
+  #results {
+    display:none; position:absolute; top:47px; left:0; right:0; max-height:280px; overflow:auto; background:#fff;
+    border:1px solid #cbd5e1; border-radius:11px; box-shadow:var(--shadow); z-index:100;
+  }
+  .result { padding:9px 10px; cursor:pointer; border-bottom:1px solid #eef2f6; }
+  .result:last-child { border-bottom:0; }
+  .result:hover { background:#eff8ff; }
+  .result-title { font-size:13px; font-weight:750; color:#111; }
+  .result-path { font-size:11px; color:#6b7280; margin-top:2px; }
+  .button-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; }
+  .stat { background:#f7f9fc; border:1px solid #e2e8f0; border-radius:10px; padding:8px; text-align:center; }
+  .stat strong { display:block; font-size:15px; }
+  .stat span { font-size:10px; color:#64748b; }
+  .filter-row { display:flex; align-items:center; gap:8px; margin:7px 0; font-size:12px; }
+  .filter-row input { accent-color:#0b6bcb; }
+  #category-filters { max-height:250px; overflow:auto; padding-right:4px; }
+  .range-row { display:grid; grid-template-columns:116px 1fr 38px; gap:8px; align-items:center; margin:8px 0; font-size:12px; }
+  input[type="range"] { width:100%; accent-color:#0b6bcb; }
+  .detail-card { background:#f8fafc; border:1px solid #dbe4ee; border-radius:14px; padding:12px; }
+  #detail-title { font-size:16px; margin:0 0 6px; line-height:1.2; }
+  #detail-path { color:#64748b; font-size:11px; line-height:1.4; margin-bottom:9px; }
+  #detail-description { font-size:12px; line-height:1.55; margin:0 0 10px; color:#303846; }
+  .chips { display:flex; gap:5px; flex-wrap:wrap; margin:8px 0; }
+  .chip { font-size:10px; background:#fff; border:1px solid #d8e0e8; padding:4px 7px; border-radius:999px; color:#334155; }
+  .detail-actions { display:flex; gap:7px; flex-wrap:wrap; margin-top:9px; }
+  .legend { display:grid; grid-template-columns:1fr 1fr; gap:6px 10px; }
+  .legend-item { display:flex; align-items:center; gap:7px; font-size:11px; min-width:0; }
+  .swatch { width:10px; height:10px; border-radius:50%; flex:none; box-shadow:0 0 0 1px rgba(0,0,0,.18); }
+  .hint { font-size:11px; line-height:1.5; color:#64748b; }
+  #graph-toolbar { position:absolute; top:12px; right:12px; display:flex; gap:7px; z-index:10; }
+  .floating { background:rgba(255,255,255,.92); backdrop-filter:blur(8px); box-shadow:0 8px 24px rgba(15,23,42,.10); }
+  #breadcrumb {
+    position:absolute; left:14px; bottom:14px; max-width:min(760px,calc(100% - 28px));
+    padding:9px 12px; border:1px solid #d9e2ec; border-radius:11px; font-size:11px; color:#334155;
+    background:rgba(255,255,255,.92); backdrop-filter:blur(8px); box-shadow:0 7px 22px rgba(15,23,42,.09);
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; z-index:9;
+  }
+  #mobile-panel-toggle { display:none; }
+  .node circle { cursor:grab; stroke:#fff; stroke-width:1.7px; filter:drop-shadow(0 2px 3px rgba(15,23,42,.18)); }
+  .node circle:active { cursor:grabbing; }
+  .node text { pointer-events:none; fill:#111827; paint-order:stroke; stroke:#fff; stroke-width:3.5px; stroke-linejoin:round; font-weight:700; }
+  .node .count-badge { pointer-events:none; fill:#fff; stroke:#64748b; stroke-width:1px; }
+  .node .count-text { pointer-events:none; fill:#111; stroke:none; font-size:8px; font-weight:800; text-anchor:middle; dominant-baseline:central; }
+  .link { stroke:#9aa8b8; stroke-opacity:.50; }
+  .link.cross { stroke-dasharray:4 4; stroke:#64748b; stroke-opacity:.35; }
+  .node.selected circle { stroke:#111827; stroke-width:3px; }
+  .node.search-hit circle { stroke:#e11d48; stroke-width:4px; }
+  .kbd { border:1px solid #cbd5e1; border-bottom-width:2px; background:#fff; border-radius:5px; padding:1px 5px; font-size:10px; color:#475569; }
+
+  @media (max-width: 820px) {
+    :root { --header-h:58px; }
+    #app { grid-template-columns:1fr; grid-template-rows:var(--header-h) 1fr; }
+    header { padding:0 10px; gap:9px; }
+    .brand-mark { width:34px; height:34px; border-radius:10px; font-size:13px; }
+    h1 { font-size:15px; }
+    .subtitle { font-size:10px; }
+    #panel {
+      position:fixed; z-index:30; left:8px; right:8px; bottom:8px; top:auto; width:auto;
+      max-height:min(60vh,580px); border:1px solid #cbd5e1; border-radius:16px; box-shadow:var(--shadow);
+      transform:translateY(calc(100% + 20px)); transition:transform .22s ease; padding:13px;
+    }
+    #panel.open { transform:translateY(0); }
+    #graph-wrap { grid-column:1; grid-row:2; }
+    #mobile-panel-toggle { display:inline-flex; }
+    .desktop-only { display:none; }
+    #graph-toolbar { top:8px; right:8px; }
+    #breadcrumb { bottom:9px; left:9px; max-width:calc(100% - 18px); }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand-mark">Si</div>
+    <div class="title-wrap">
+      <h1>All Semiconductor Knowledge Graph</h1>
+      <div class="subtitle">Interactive drag-and-pull force-directed map • click nodes to expand</div>
+    </div>
+    <div class="header-actions">
+      <button class="icon-btn" id="mobile-panel-toggle" aria-label="Open controls">☰ Controls</button>
+      <button class="icon-btn desktop-only" id="header-fit">Fit graph</button>
+    </div>
+  </header>
+
+  <aside id="panel" aria-label="Graph controls">
+    <div class="section">
+      <div class="section-title">Find semiconductor knowledge</div>
+      <div class="search-wrap">
+        <input id="search" type="search" autocomplete="off" placeholder="Search all topics…" aria-label="Search semiconductor topics">
+        <button class="search-clear" id="search-clear" aria-label="Clear search">×</button>
+        <div id="results" role="listbox"></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Explore</div>
+      <div class="button-grid">
+        <button class="btn primary" id="overview">Overview</button>
+        <button class="btn" id="expand-selected">Expand selected</button>
+        <button class="btn" id="collapse-selected">Collapse branch</button>
+        <button class="btn" id="expand-depth">Show 3 levels</button>
+        <button class="btn" id="expand-all">Show all topics</button>
+        <button class="btn" id="fit">Fit visible</button>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Current map</div>
+      <div class="stats">
+        <div class="stat"><strong id="visible-count">0</strong><span>visible nodes</span></div>
+        <div class="stat"><strong id="total-count">0</strong><span>total nodes</span></div>
+        <div class="stat"><strong id="link-count">0</strong><span>visible links</span></div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Selected topic</div>
+      <div class="detail-card">
+        <h2 id="detail-title">Semiconductors</h2>
+        <div id="detail-path">Semiconductors</div>
+        <p id="detail-description">Select any node to inspect its place in the semiconductor knowledge map.</p>
+        <div class="chips" id="detail-chips"></div>
+        <div class="detail-actions">
+          <button class="btn small" id="detail-expand">Expand</button>
+          <button class="btn small" id="detail-focus">Focus</button>
+          <button class="btn small" id="detail-pin">Pin</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Physics and labels</div>
+      <div class="range-row"><label for="charge">Repulsion</label><input id="charge" type="range" min="-1000" max="-80" step="10" value="-360"><span id="charge-v">-360</span></div>
+      <div class="range-row"><label for="distance">Link length</label><input id="distance" type="range" min="35" max="180" step="5" value="88"><span id="distance-v">88</span></div>
+      <div class="range-row"><label for="label-size">Label size</label><input id="label-size" type="range" min="8" max="17" step="1" value="11"><span id="label-v">11</span></div>
+      <label class="filter-row"><input id="labels-toggle" type="checkbox" checked> Show labels</label>
+      <label class="filter-row"><input id="crosslinks-toggle" type="checkbox" checked> Show interdisciplinary links</label>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Top-level branches</div>
+      <div id="category-filters"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Legend</div>
+      <div class="legend" id="legend"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Interactions</div>
+      <div class="hint">
+        Drag nodes through the simulated force field. Drag empty space to pan. Scroll or pinch to zoom.
+        Click to expand. Double-click to focus. Right-click to pin or unpin.
+        Press <span class="kbd">/</span> to search and <span class="kbd">Esc</span> to close the mobile panel.
+      </div>
+    </div>
+  </aside>
+
+  <main id="graph-wrap">
+    <svg id="graph" role="img" aria-label="Interactive semiconductor knowledge graph"></svg>
+    <div id="graph-toolbar">
+      <button class="icon-btn floating" id="zoom-in" aria-label="Zoom in">＋</button>
+      <button class="icon-btn floating" id="zoom-out" aria-label="Zoom out">−</button>
+      <button class="icon-btn floating" id="zoom-reset" aria-label="Reset zoom">⟳</button>
+    </div>
+    <div id="breadcrumb">Semiconductors</div>
+  </main>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const taxonomy = {"Semiconductor Fundamentals": {"Atomic and solid-state foundations": ["Atomic orbitals", "Covalent bonding in crystals", "Crystal lattices", "Reciprocal lattice", "Brillouin zones", "Bloch theorem", "Band formation", "Band structure", "Density of states", "Effective mass", "Fermi level", "Fermi–Dirac statistics", "Boltzmann approximation", "Carrier concentration", "Intrinsic semiconductors", "Extrinsic semiconductors"], "Charge carriers": ["Electrons", "Holes", "Generation", "Recombination", "Thermal generation", "Optical generation", "Radiative recombination", "Shockley–Read–Hall recombination", "Auger recombination", "Carrier lifetime", "Minority carriers", "Majority carriers", "Quasi-Fermi levels", "Carrier injection"], "Transport physics": ["Drift current", "Diffusion current", "Mobility", "Velocity saturation", "Ballistic transport", "Quasi-ballistic transport", "Scattering mechanisms", "Phonon scattering", "Ionized impurity scattering", "Surface roughness scattering", "Hot carriers", "Hall effect", "Einstein relation", "Continuity equation", "Poisson equation", "Drift–diffusion equations"], "Semiconductor statistics": ["Intrinsic carrier density", "Degenerate semiconductors", "Nondegenerate semiconductors", "Fermi integrals", "Charge neutrality", "Ionization of dopants", "Bandgap narrowing", "Temperature dependence", "Effective density of states"], "Junction electrostatics": ["Depletion approximation", "Built-in potential", "Space-charge region", "Electric field profile", "Junction capacitance", "Diffusion capacitance", "Breakdown", "Avalanche multiplication", "Zener tunneling", "Punch-through", "Reach-through"]}, "Semiconductor Materials": {"Elemental semiconductors": ["Silicon", "Germanium", "Diamond", "Silicon–germanium", "Amorphous silicon", "Polycrystalline silicon", "Silicon-on-insulator", "Strained silicon"], "III–V semiconductors": ["Gallium arsenide", "Indium phosphide", "Gallium nitride", "Aluminum gallium arsenide", "Indium gallium arsenide", "Indium gallium phosphide", "Aluminum nitride", "Indium nitride", "Gallium antimonide", "Indium antimonide", "III–V heterostructures"], "II–VI semiconductors": ["Cadmium telluride", "Zinc oxide", "Zinc selenide", "Mercury cadmium telluride", "Cadmium sulfide", "Zinc sulfide", "II–VI quantum wells"], "Wide-bandgap and ultra-wide-bandgap materials": ["Silicon carbide", "Gallium nitride", "Aluminum gallium nitride", "Gallium oxide", "Diamond electronics", "Boron nitride", "Aluminum nitride electronics", "Breakdown field", "Thermal conductivity", "Baliga figure of merit"], "Organic and molecular semiconductors": ["Small-molecule semiconductors", "Conjugated polymers", "Organic thin-film transistors", "Charge-transfer complexes", "Excitons", "Organic mobility", "Molecular packing", "Solution processing", "Organic semiconductor stability"], "2D and layered semiconductors": ["Molybdenum disulfide", "Tungsten diselenide", "Black phosphorus", "Transition-metal dichalcogenides", "Graphene electronics", "Hexagonal boron nitride", "van der Waals heterostructures", "Layer-dependent bandgap", "Contact resistance in 2D devices"], "Perovskites and emerging materials": ["Halide perovskites", "Oxide semiconductors", "Indium gallium zinc oxide", "Quantum dots", "Colloidal nanocrystals", "Topological materials", "Spintronic materials", "Neuromorphic materials", "Phase-change materials", "Ferroelectric semiconductors"], "Crystal growth and substrates": ["Czochralski growth", "Float-zone silicon", "Bridgman growth", "Vertical gradient freeze", "Epitaxial wafers", "Sapphire substrates", "Silicon carbide substrates", "SOI wafers", "Wafer orientation", "Crystal defects", "Dislocations", "Stacking faults"]}, "Diodes and Junction Devices": {"PN junction diode": ["Ideal diode equation", "Forward bias", "Reverse bias", "Minority-carrier injection", "Reverse saturation current", "Temperature dependence", "Ideality factor", "Series resistance", "Recombination current", "Small-signal diode model"], "Special-purpose diodes": ["Schottky diode", "Zener diode", "Avalanche diode", "PIN diode", "Tunnel diode", "Varactor diode", "Step-recovery diode", "Gunn diode", "IMPATT diode", "Transient-voltage suppressor"], "Photodiodes and detectors": ["PIN photodiode", "Avalanche photodiode", "Single-photon avalanche diode", "Photoconductor", "Responsivity", "Quantum efficiency", "Dark current", "Noise equivalent power", "Bandwidth", "Photodiode arrays"], "Light-emitting junctions": ["LED junctions", "Radiative efficiency", "Internal quantum efficiency", "External quantum efficiency", "Carrier confinement", "Quantum-well LEDs", "MicroLEDs", "Laser diodes", "Threshold current"], "Heterojunctions": ["Type-I alignment", "Type-II alignment", "Type-III alignment", "Band offsets", "Heterojunction bipolar structures", "Quantum wells", "Superlattices", "Modulation doping", "Polarization-induced charge"]}, "Transistors and Device Physics": {"MOS capacitor": ["Accumulation", "Depletion", "Inversion", "Flat-band voltage", "Threshold condition", "Work-function difference", "Oxide charge", "Interface traps", "C–V characteristics", "High-frequency C–V", "Deep-depletion C–V", "Quantum capacitance"], "MOSFET fundamentals": ["Long-channel MOSFET", "Linear region", "Saturation region", "Threshold voltage", "Transconductance", "Body effect", "Channel-length modulation", "Subthreshold conduction", "Drain-induced barrier lowering", "Mobility degradation", "Gate leakage", "MOSFET small-signal model"], "Advanced CMOS devices": ["FinFET", "Gate-all-around transistor", "Nanosheet FET", "Nanowire FET", "Fully depleted SOI", "Partially depleted SOI", "Forksheet transistor", "Complementary FET", "Stacked CMOS", "Backside power delivery"], "Bipolar transistors": ["BJT operation", "Emitter injection efficiency", "Base transport factor", "Current gain", "Early effect", "High-level injection", "Kirk effect", "Gummel–Poon model", "Heterojunction bipolar transistor", "SiGe HBT"], "Power transistors": ["Power MOSFET", "Trench MOSFET", "Superjunction MOSFET", "IGBT", "JFET", "SiC MOSFET", "GaN HEMT", "MOS-controlled thyristor", "Safe operating area", "Switching losses"], "High-frequency devices": ["MESFET", "HEMT", "PHEMT", "RF CMOS", "SiGe BiCMOS", "Transit frequency", "Maximum oscillation frequency", "Noise figure", "S-parameters", "Power-added efficiency"], "Novel transistor concepts": ["Tunnel FET", "Negative-capacitance FET", "Ferroelectric FET", "Spin FET", "Single-electron transistor", "Carbon nanotube FET", "2D material FET", "Organic FET", "Electrolyte-gated transistor", "Biosensor FET"], "Device degradation": ["Bias temperature instability", "Hot-carrier injection", "Time-dependent dielectric breakdown", "Gate-oxide wearout", "Self-heating", "Random telegraph noise", "Mobility aging", "Threshold-voltage drift", "Radiation effects"]}, "Memory Technologies": {"Volatile memory": ["SRAM", "DRAM", "1T1C cell", "Sense amplifiers", "Bitlines", "Wordlines", "Refresh", "Retention time", "Row hammer", "Embedded DRAM", "Gain-cell memory"], "Flash memory": ["Floating-gate flash", "Charge-trap flash", "NOR flash", "NAND flash", "3D NAND", "Program", "Erase", "Read disturb", "Program disturb", "Wear leveling", "Error correction", "Multi-level cell", "Triple-level cell", "Quad-level cell"], "Emerging nonvolatile memory": ["MRAM", "STT-MRAM", "SOT-MRAM", "ReRAM", "Phase-change memory", "Ferroelectric RAM", "FeFET memory", "Conductive-bridge RAM", "Racetrack memory", "Memristors"], "Memory architecture": ["Memory hierarchy", "Cache", "Main memory", "Storage-class memory", "High-bandwidth memory", "Compute-in-memory", "Near-memory computing", "Processing-in-memory", "Memory controllers", "Redundancy and repair"], "Reliability and endurance": ["Retention loss", "Endurance cycling", "Read disturb", "Write disturb", "Soft errors", "Data remanence", "Wearout", "ECC", "Bad-block management"]}, "Optoelectronics and Photonics": {"LEDs and displays": ["Visible LEDs", "Infrared LEDs", "Ultraviolet LEDs", "OLEDs", "MicroLED displays", "Quantum-dot LEDs", "Display backplanes", "Color conversion", "Efficiency droop", "Thermal management in LEDs"], "Semiconductor lasers": ["Edge-emitting laser", "VCSEL", "DFB laser", "Quantum-well laser", "Quantum-dot laser", "Gain spectrum", "Optical confinement", "Threshold condition", "Linewidth", "Mode control", "Laser reliability"], "Photodetectors": ["Silicon photodiodes", "InGaAs photodiodes", "HgCdTe detectors", "CMOS image sensors", "CCD image sensors", "SPAD arrays", "Time-of-flight sensors", "Infrared focal-plane arrays", "Avalanche gain", "Dark-current suppression"], "Integrated photonics": ["Silicon photonics", "Waveguides", "Ring resonators", "Mach–Zehnder modulators", "Grating couplers", "Photonic integrated circuits", "Optical interconnects", "Electro-optic modulators", "Germanium photodetectors", "Photonic packaging"], "Solar cells": ["Silicon solar cells", "Thin-film solar cells", "CdTe photovoltaics", "CIGS photovoltaics", "Perovskite solar cells", "Organic photovoltaics", "Multijunction solar cells", "Heterojunction solar cells", "Passivated contacts", "Tandem photovoltaics", "Shockley–Queisser limit", "Solar-cell degradation"]}, "Analog, RF and Mixed-Signal ICs": {"Analog building blocks": ["Current mirrors", "Differential pairs", "Operational amplifiers", "Comparators", "Bandgap references", "Voltage regulators", "Low-dropout regulators", "Bias circuits", "Transconductors", "Analog switches"], "Data converters": ["ADC fundamentals", "DAC fundamentals", "Flash ADC", "Successive-approximation ADC", "Sigma–delta ADC", "Pipeline ADC", "Current-steering DAC", "R–2R DAC", "Quantization noise", "Integral nonlinearity", "Differential nonlinearity"], "RF circuits": ["Low-noise amplifiers", "Power amplifiers", "Mixers", "Oscillators", "Phase-locked loops", "Frequency synthesizers", "RF switches", "Baluns", "Matching networks", "RF front ends"], "Clocking and timing": ["Crystal oscillators", "Ring oscillators", "Clock generation", "Clock recovery", "Jitter", "Phase noise", "Delay-locked loops", "Time-to-digital converters"], "Mixed-signal integration": ["Isolation techniques", "Substrate noise", "Guard rings", "Deep N-well", "Analog layout matching", "Common-centroid layout", "Device mismatch", "Calibration", "Digital assistance"]}, "Digital Logic and Computer Architecture": {"CMOS logic": ["CMOS inverter", "Noise margins", "Propagation delay", "Dynamic power", "Short-circuit power", "Leakage power", "Static CMOS", "Pass-transistor logic", "Transmission gates", "Ratioed logic"], "Sequential logic": ["Latches", "Flip-flops", "Registers", "Counters", "Finite-state machines", "Setup time", "Hold time", "Clock skew", "Metastability", "Clock gating"], "Arithmetic circuits": ["Adders", "Multipliers", "Dividers", "Floating-point units", "ALUs", "Carry-lookahead", "Carry-save arithmetic", "Booth encoding", "MAC units"], "Processor architecture": ["Instruction pipelines", "Superscalar execution", "Out-of-order execution", "Branch prediction", "Cache coherence", "Memory consistency", "Vector processors", "SIMD", "GPU architecture", "AI accelerators", "RISC architectures"], "Low-power design": ["Voltage scaling", "Frequency scaling", "Power gating", "Multi-threshold CMOS", "Retention cells", "Adaptive body bias", "Dynamic voltage and frequency scaling", "Near-threshold computing", "Energy-proportional design"], "Hardware security": ["Secure boot", "Trusted execution", "Physically unclonable functions", "Side-channel attacks", "Fault injection", "Hardware Trojans", "Logic locking", "Cryptographic accelerators", "Tamper resistance"]}, "EDA and Semiconductor Design Flow": {"Front-end design": ["System specification", "Architecture design", "RTL design", "HDL", "Verilog", "SystemVerilog", "VHDL", "High-level synthesis", "IP integration", "Design reuse"], "Verification": ["Functional verification", "Simulation", "Formal verification", "Emulation", "FPGA prototyping", "Assertion-based verification", "Coverage", "UVM", "Equivalence checking", "Static linting"], "Logic synthesis": ["Technology mapping", "Optimization", "Timing constraints", "Area optimization", "Power optimization", "Clock gating insertion", "Scan insertion", "Design for test"], "Physical design": ["Floorplanning", "Power planning", "Placement", "Clock-tree synthesis", "Routing", "Timing closure", "Signal integrity", "Congestion optimization", "Design-rule checking", "Layout-versus-schematic"], "Signoff": ["Static timing analysis", "IR drop", "Electromigration analysis", "Power integrity", "Thermal analysis", "Noise analysis", "Antenna checks", "Density checks", "Reliability signoff", "Mask-data preparation"], "EDA algorithms": ["Graph algorithms", "Constraint solving", "Placement algorithms", "Routing algorithms", "SPICE simulation", "Model-order reduction", "Statistical timing", "Monte Carlo analysis", "Machine learning for EDA"], "Design methodologies": ["Standard-cell design", "Full-custom design", "Semi-custom design", "Structured ASICs", "Gate arrays", "Chiplets", "Platform-based design", "Design technology co-optimization", "System technology co-optimization"]}, "Process Integration": {"CMOS integration": ["Twin-well CMOS", "Triple-well CMOS", "Shallow-trench isolation", "Gate-first integration", "Gate-last integration", "Replacement metal gate", "Self-aligned contacts", "Spacer engineering", "Source-drain engineering", "Contact-over-active-gate"], "FEOL": ["Well formation", "Channel implants", "Isolation", "Gate stack formation", "Extension implants", "Halo implants", "Spacer formation", "Source-drain formation", "Silicidation", "Contact formation"], "MOL": ["Contact etch", "Contact liners", "Tungsten contacts", "Cobalt contacts", "Ruthenium contacts", "Local interconnect", "Self-aligned vias", "Contact resistance"], "BEOL": ["Interconnect stacks", "Low-k dielectrics", "Copper interconnect", "Damascene process", "Dual damascene", "Barrier layers", "Capping layers", "Vias", "Air gaps", "Top-level metals"], "3D integration": ["Through-silicon vias", "Hybrid bonding", "Wafer-to-wafer bonding", "Die-to-wafer bonding", "Monolithic 3D integration", "Sequential integration", "Backside interconnects", "3D power delivery"], "Integration challenges": ["Thermal budget", "Patterning variability", "Contact resistance", "RC delay", "Stress engineering", "Layout-dependent effects", "Process interactions", "Defectivity", "Yield learning", "Integration margin"]}, "Lithography and Patterning": {"Optical lithography": ["Photolithography", "Photoresists", "Projection optics", "Stepper", "Scanner", "Numerical aperture", "Depth of focus", "Resolution enhancement", "Off-axis illumination", "Phase-shift masks", "Optical proximity correction"], "DUV lithography": ["KrF lithography", "ArF lithography", "Immersion lithography", "193 nm resists", "Double patterning", "Self-aligned double patterning", "Self-aligned quadruple patterning", "Litho-etch-litho-etch"], "EUV lithography": ["13.5 nm radiation", "EUV source", "Laser-produced plasma", "EUV mirrors", "EUV masks", "Pellicles", "EUV resists", "Stochastic defects", "EUV dose", "High-NA EUV", "Actinic inspection"], "Mask technology": ["Photomasks", "Reticles", "Mask blanks", "Absorber stacks", "Mask writing", "Electron-beam mask writing", "Mask inspection", "Mask repair", "Mask cleaning", "Computational lithography"], "Resist processing": ["Spin coating", "Soft bake", "Exposure", "Post-exposure bake", "Development", "Chemically amplified resists", "Metal-oxide resists", "Resist outgassing", "Line-edge roughness", "Resist collapse"], "Alternative patterning": ["Electron-beam lithography", "Nanoimprint lithography", "Directed self-assembly", "Interference lithography", "Multiple-beam lithography", "Atomic-layer patterning", "Self-aligned patterning"], "Metrology for lithography": ["Overlay metrology", "Critical-dimension SEM", "Scatterometry", "Focus-exposure matrices", "Line-width roughness", "Mask error enhancement factor", "Pattern placement error", "Stochastic failure analysis"]}, "Thin-Film Deposition": {"Physical vapor deposition": ["Evaporation", "Thermal evaporation", "Electron-beam evaporation", "Sputtering", "DC sputtering", "RF sputtering", "Reactive sputtering", "Ionized PVD", "Collimated sputtering", "Step coverage"], "Chemical vapor deposition": ["CVD fundamentals", "LPCVD", "PECVD", "SACVD", "HDPCVD", "MOCVD", "Epitaxial CVD", "Precursor chemistry", "Surface reaction kinetics", "Mass-transport-limited growth"], "Atomic layer deposition": ["ALD cycles", "Self-limiting reactions", "Thermal ALD", "Plasma-enhanced ALD", "Area-selective ALD", "Spatial ALD", "Nucleation delay", "Conformality", "ALD precursors", "Atomic layer etching"], "Epitaxy": ["Homoepitaxy", "Heteroepitaxy", "Selective epitaxy", "Molecular beam epitaxy", "Vapor-phase epitaxy", "Metalorganic vapor-phase epitaxy", "Strained layers", "Critical thickness", "Epitaxial defects", "Doping during epitaxy"], "Dielectric films": ["Silicon dioxide", "Silicon nitride", "High-k dielectrics", "Low-k dielectrics", "Interlayer dielectrics", "Passivation films", "Barrier dielectrics", "Ferroelectric films"], "Metal films": ["Aluminum metallization", "Copper metallization", "Tungsten", "Cobalt", "Ruthenium", "Titanium nitride", "Tantalum nitride", "Metal gates", "Diffusion barriers", "Adhesion layers"]}, "Etch, Clean and Surface Preparation": {"Wet etching": ["Isotropic etching", "Anisotropic wet etching", "Silicon wet etchants", "Oxide etchants", "Metal wet etchants", "Selectivity", "Undercut", "Etch rate", "Agitation", "Endpoint control"], "Dry etching": ["Plasma etching", "Reactive-ion etching", "ICP etching", "High-density plasma etching", "Deep reactive-ion etching", "Bosch process", "Cryogenic etching", "Ion milling", "Neutral-beam etching"], "Plasma chemistry": ["Fluorocarbon plasmas", "Chlorine plasmas", "Bromine plasmas", "Oxygen plasmas", "Polymer passivation", "Ion energy", "Radical flux", "Sheath physics", "Charging damage", "Microloading"], "Atomic layer etching": ["ALE cycles", "Surface modification", "Directional removal", "Thermal ALE", "Plasma ALE", "Self-limiting etch", "Selectivity in ALE"], "Wafer cleaning": ["RCA clean", "SC-1 clean", "SC-2 clean", "Piranha clean", "HF last", "Megasonic cleaning", "Single-wafer cleaning", "Ozonated water", "Solvent cleaning", "Particle removal"], "Surface preparation": ["Native oxide removal", "Surface termination", "Preclean", "Plasma descum", "Wet bench processing", "Drying methods", "Marangoni drying", "Surface contamination"]}, "Doping and Thermal Processing": {"Ion implantation": ["Implant dose", "Implant energy", "Projected range", "Channeling", "Tilt and twist", "Beam current", "Dopant species", "Co-implantation", "Molecular implants", "Plasma doping", "Damage accumulation"], "Diffusion": ["Fickian diffusion", "Constant-source diffusion", "Limited-source diffusion", "Predeposition", "Drive-in", "Diffusion coefficients", "Transient enhanced diffusion", "Dopant segregation", "Dopant activation"], "Annealing": ["Furnace anneal", "Rapid thermal anneal", "Spike anneal", "Flash-lamp anneal", "Laser anneal", "Millisecond anneal", "Solid-phase epitaxial regrowth", "Defect annealing", "Activation efficiency"], "Oxidation": ["Thermal oxidation", "Dry oxidation", "Wet oxidation", "Deal–Grove model", "Rapid thermal oxidation", "Oxynitridation", "Field oxidation", "Gate oxidation", "Oxide growth stress"], "Advanced doping": ["Monolayer doping", "In situ doping", "Delta doping", "Modulation doping", "Atomic-precision doping", "Laser doping", "Spin-on dopants"]}, "Chemical Mechanical Planarization": {"CMP fundamentals": ["Planarization", "Preston equation", "Removal rate", "Selectivity", "Within-wafer nonuniformity", "Dishing", "Erosion", "Pattern-density effects", "Endpoint detection"], "Slurries and pads": ["Abrasive particles", "Oxidizers", "Complexing agents", "Corrosion inhibitors", "Surfactants", "pH control", "CMP pads", "Pad conditioning", "Slurry stability"], "CMP applications": ["Oxide CMP", "Copper CMP", "Tungsten CMP", "Cobalt CMP", "Ruthenium CMP", "STI CMP", "ILD CMP", "Barrier CMP", "Shallow-trench planarization"], "CMP defects": ["Scratches", "Particles", "Residue", "Corrosion", "Delamination", "Pad glazing", "Micro-scratches", "Post-CMP cleaning", "Defect inspection"]}, "Metrology, Inspection and Characterization": {"Critical-dimension metrology": ["CD-SEM", "Scatterometry", "Optical critical-dimension metrology", "Atomic-force microscopy", "Cross-sectional SEM", "TEM metrology", "Line-edge roughness", "Sidewall angle"], "Film metrology": ["Ellipsometry", "Reflectometry", "X-ray reflectivity", "Profilometry", "Film stress", "Four-point probe", "Sheet resistance", "Thickness mapping", "Refractive index"], "Materials characterization": ["X-ray diffraction", "Raman spectroscopy", "FTIR", "XPS", "SIMS", "Auger electron spectroscopy", "Rutherford backscattering", "Photoluminescence", "Cathodoluminescence", "Electron energy-loss spectroscopy"], "Defect inspection": ["Brightfield inspection", "Darkfield inspection", "E-beam inspection", "Patterned-wafer inspection", "Unpatterned-wafer inspection", "Defect review", "Automatic defect classification", "Nuisance defects", "Defect pareto"], "Electrical characterization": ["I–V measurements", "C–V measurements", "Hall measurements", "Four-point probe", "TLM structures", "Van der Pauw structures", "Charge pumping", "Wafer-level parametric test", "Noise measurements"], "Failure analysis": ["Optical microscopy", "Focused ion beam", "Cross-sectioning", "TEM failure analysis", "SEM failure analysis", "Emission microscopy", "OBIRCH", "Thermal imaging", "Nanoprobing", "Chemical delayering"]}, "Yield, Defects and Statistical Process Control": {"Yield models": ["Die yield", "Wafer yield", "Poisson yield model", "Murphy yield model", "Negative-binomial model", "Defect density", "Critical area", "Redundancy yield"], "Defect mechanisms": ["Particles", "Scratches", "Pattern collapse", "Bridging", "Opens", "Voids", "Seams", "Residues", "Contamination", "Crystal defects", "Electrical defects"], "Statistical process control": ["Control charts", "Run charts", "Process capability", "Cp and Cpk", "Western Electric rules", "Fault detection and classification", "Advanced process control", "Multivariate SPC", "Recipe control", "Drift monitoring"], "Yield learning": ["Split lots", "Process experiments", "Defect pareto", "Root-cause analysis", "Correlation analysis", "Virtual metrology", "Yield ramp", "Excursion management", "Golden tool", "Golden wafer"], "Design for yield": ["Redundant vias", "Critical-area reduction", "Layout regularity", "Restricted design rules", "Lithography-friendly design", "Statistical design", "Parametric yield", "Variation-aware design"]}, "Semiconductor Equipment and Factory Automation": {"Wafer fabrication equipment": ["Lithography scanners", "Track systems", "Etch chambers", "Deposition reactors", "Ion implanters", "Diffusion furnaces", "CMP tools", "Wet benches", "Metrology tools", "Inspection tools"], "Vacuum technology": ["Vacuum pumps", "Turbomolecular pumps", "Cryopumps", "Dry pumps", "Vacuum gauges", "Leak detection", "Outgassing", "Base pressure", "Process pressure control"], "Gas and chemical delivery": ["Mass-flow controllers", "Gas cabinets", "Bubblers", "Vapor delivery", "Chemical distribution", "Ultra-high-purity gases", "Point-of-use filtration", "Abatement systems", "Toxic-gas monitoring"], "Automation and control": ["SECS/GEM", "Equipment control", "Factory host systems", "MES", "Automated material handling", "FOUPs", "Load ports", "Wafer mapping", "Recipe management", "Equipment health monitoring"], "Maintenance and productivity": ["Preventive maintenance", "Predictive maintenance", "Chamber matching", "Tool qualification", "Mean time between failures", "Overall equipment effectiveness", "Consumables management", "Remote diagnostics"]}, "Packaging and Heterogeneous Integration": {"Traditional packaging": ["Wire bonding", "Flip-chip bonding", "Lead frames", "Ball-grid arrays", "Chip-scale packages", "Ceramic packages", "Plastic packages", "Underfill", "Molding compounds", "Die attach"], "Wafer-level packaging": ["Fan-in WLP", "Fan-out WLP", "Redistribution layers", "Through-mold vias", "Wafer bumping", "Copper pillars", "Microbumps", "Panel-level packaging", "Wafer-level underfill"], "Advanced packaging": ["2.5D integration", "3D integration", "Interposers", "Silicon bridges", "Chiplets", "Hybrid bonding", "Die stacking", "System-in-package", "Co-packaged optics", "Embedded die"], "Thermal management": ["Thermal interface materials", "Heat spreaders", "Heat sinks", "Vapor chambers", "Liquid cooling", "Microfluidic cooling", "Thermal vias", "Junction temperature", "Thermal resistance"], "Package reliability": ["Thermomechanical stress", "Warpage", "Solder fatigue", "Delamination", "Moisture sensitivity", "Electromigration in packages", "Drop testing", "Temperature cycling", "Power cycling"], "Signal and power integrity": ["Package parasitics", "Impedance control", "Crosstalk", "Return paths", "Power delivery networks", "Decoupling capacitors", "High-speed SerDes packaging", "EMI shielding"]}, "Testing and Design for Test": {"Wafer test": ["Probe cards", "Wafer probing", "Parametric test", "Known-good die", "Probe marks", "Test time", "Wafer maps", "Adaptive test"], "Final test": ["Automatic test equipment", "Handlers", "Load boards", "Functional test", "Burn-in", "Bin sorting", "Temperature test", "High-speed test"], "DFT": ["Scan chains", "Boundary scan", "JTAG", "Built-in self-test", "Memory BIST", "Logic BIST", "Test compression", "At-speed test", "Fault coverage"], "Fault models": ["Stuck-at faults", "Transition faults", "Bridging faults", "Open faults", "Delay faults", "Cell-aware faults", "Small-delay defects", "Analog fault models"], "Reliability screening": ["Burn-in screening", "Infant mortality", "Highly accelerated stress testing", "Early-life failure rate", "Outlier screening", "Statistical test limits"]}, "Reliability and Qualification": {"Intrinsic reliability": ["TDDB", "BTI", "Hot-carrier degradation", "Electromigration", "Stress migration", "Self-heating", "Junction leakage", "Contact degradation", "Interconnect failure"], "Environmental reliability": ["Temperature cycling", "Thermal shock", "Humidity testing", "Pressure cooker test", "Salt fog", "Vibration", "Mechanical shock", "Radiation testing"], "Qualification standards": ["JEDEC qualification", "AEC-Q100", "AEC-Q101", "HTOL", "HAST", "Temperature-humidity-bias", "ESD qualification", "Latch-up testing"], "ESD and EOS": ["Human-body model", "Charged-device model", "Machine model", "Electrical overstress", "ESD clamps", "Snapback", "SCR protection", "Latch-up immunity"], "Soft errors and radiation": ["Single-event upset", "Single-event latch-up", "Single-event burnout", "Total ionizing dose", "Displacement damage", "Neutron-induced errors", "Alpha-particle errors", "Radiation hardening"], "Reliability modeling": ["Arrhenius acceleration", "Black equation", "Weibull analysis", "Bathtub curve", "Acceleration factors", "Mission profiles", "Physics of failure", "Statistical lifetime prediction"]}, "Power Electronics": {"Power devices": ["Power diode", "Schottky barrier diode", "MOSFET", "IGBT", "Thyristor", "GTO", "SiC diode", "SiC MOSFET", "GaN HEMT", "Superjunction devices"], "Power conversion": ["Buck converter", "Boost converter", "Buck–boost converter", "Flyback converter", "Half bridge", "Full bridge", "Inverters", "Rectifiers", "Resonant converters", "Power-factor correction"], "Wide-bandgap power electronics": ["SiC power modules", "GaN power ICs", "High-temperature operation", "High-frequency switching", "Gate-drive design", "Dynamic on-resistance", "Current collapse", "Reliability of WBG devices"], "Power modules": ["DBC substrates", "AMB substrates", "Sintered die attach", "Wire-bond fatigue", "Double-sided cooling", "Power cycling", "Parasitic inductance", "Module packaging"], "Applications": ["Electric vehicles", "Fast chargers", "Renewable-energy inverters", "Data-center power", "Industrial drives", "Aerospace power", "Grid electronics", "Consumer adapters"]}, "Sensors, MEMS and Microsystems": {"MEMS fundamentals": ["Surface micromachining", "Bulk micromachining", "Silicon micromachining", "Sacrificial layers", "Release etch", "Stiction", "Residual stress", "Wafer bonding"], "Inertial sensors": ["Accelerometers", "Gyroscopes", "IMUs", "Coriolis effect", "Capacitive sensing", "Piezoelectric sensing", "Closed-loop MEMS", "Bias stability"], "Pressure and flow sensors": ["Piezoresistive pressure sensors", "Capacitive pressure sensors", "Flow sensors", "Thermal anemometry", "Microfluidic sensors", "Barometers"], "Chemical and biosensors": ["ISFETs", "ChemFETs", "Gas sensors", "Electrochemical sensors", "BioFETs", "Lab-on-chip", "Microfluidics", "Surface functionalization", "Sensor drift"], "Imaging and ranging": ["CMOS image sensors", "SPAD sensors", "LiDAR receivers", "Time-of-flight sensors", "Infrared detectors", "Thermopiles", "Microbolometers"], "Actuators and acoustic devices": ["Electrostatic actuators", "Piezoelectric actuators", "Thermal actuators", "RF MEMS switches", "SAW devices", "BAW filters", "MEMS microphones", "Micromirrors"]}, "Compound Semiconductor Manufacturing": {"III–V fabrication": ["GaAs wafer processing", "InP wafer processing", "GaN epitaxy", "MOCVD reactors", "Mesa isolation", "Ohmic contacts", "Schottky gates", "Passivation", "Air bridges", "Backside thinning"], "SiC fabrication": ["SiC crystal growth", "Epitaxy on SiC", "Ion implantation in SiC", "Activation anneal", "Gate oxidation on SiC", "Basal-plane dislocations", "SiC contacts", "SiC wafer polishing"], "GaN power and RF process": ["AlGaN/GaN heterostructures", "Polarization charge", "HEMT process flow", "Gate recess", "p-GaN gate", "MIS-HEMT", "Field plates", "Dynamic RON", "GaN-on-silicon", "GaN-on-SiC"], "Optoelectronic manufacturing": ["LED epitaxy", "Laser-diode fabrication", "Facet coating", "Wafer dicing", "Chip transfer", "MicroLED mass transfer", "Photonic wafer bonding", "Optical alignment"]}, "Semiconductor Economics and Supply Chain": {"Industry structure": ["Integrated device manufacturers", "Foundries", "Fabless companies", "OSATs", "EDA vendors", "Equipment suppliers", "Materials suppliers", "IP vendors"], "Manufacturing economics": ["Fab capital cost", "Wafer cost", "Die cost", "Yield economics", "Cycle time", "Capacity utilization", "Learning curves", "Depreciation", "Cost of ownership"], "Supply chain": ["Silicon wafers", "Photoresists", "Electronic gases", "Specialty chemicals", "Masks", "Substrates", "Lead times", "Inventory buffers", "Second sourcing", "Geographic concentration"], "Technology roadmaps": ["Moore's law", "Dennard scaling", "More-than-Moore", "More Moore", "Heterogeneous integration", "Chiplet roadmaps", "IRDS", "Design-technology co-optimization"], "Policy and geopolitics": ["Export controls", "Industrial policy", "Semiconductor incentives", "Supply-chain resilience", "Trusted foundries", "Technology sovereignty", "Workforce policy", "Research funding"], "Sustainability": ["Fab energy use", "Fab water use", "Greenhouse-gas emissions", "Perfluorocarbon abatement", "Chemical waste", "Water recycling", "Life-cycle assessment", "Circular manufacturing", "Green fabs"]}, "Modeling and Simulation": {"Device simulation": ["TCAD", "Poisson solvers", "Drift–diffusion simulation", "Hydrodynamic models", "Monte Carlo transport", "Quantum transport", "NEGF", "Schrödinger–Poisson solvers", "Mobility models", "Recombination models"], "Process simulation": ["Implant simulation", "Diffusion simulation", "Oxidation simulation", "Topography simulation", "Etch simulation", "Deposition simulation", "Stress simulation", "Dopant activation simulation"], "Circuit simulation": ["SPICE", "Compact models", "BSIM", "Verilog-A", "Transient simulation", "AC analysis", "Noise analysis", "Harmonic balance", "Monte Carlo circuit simulation"], "Thermal and multiphysics modeling": ["Heat conduction", "Electrothermal simulation", "Thermomechanical stress", "Fluid flow in cooling", "Power-map simulation", "Package thermal models", "Multiscale simulation"], "Statistical modeling": ["Process variation", "Random dopant fluctuation", "Line-edge roughness", "Work-function variation", "Statistical compact models", "Corner analysis", "Sensitivity analysis", "Uncertainty quantification"], "AI for semiconductor R&D": ["Surrogate models", "Inverse design", "Process optimization", "Virtual metrology", "Defect classification", "Predictive maintenance", "Yield prediction", "Generative layout", "Reinforcement learning for control"]}, "Compact Modeling": {"MOS compact models": ["BSIM3", "BSIM4", "BSIM-CMG", "PSP model", "EKV model", "Surface-potential models", "Charge-based models", "Short-channel effects", "RF extensions"], "Bipolar compact models": ["Gummel–Poon", "VBIC", "HICUM", "SiGe HBT modeling", "Self-heating models"], "Power-device models": ["Power MOSFET models", "IGBT models", "SiC MOSFET models", "GaN HEMT models", "Dynamic traps", "Package parasitics", "Thermal networks"], "Memory and emerging-device models": ["Flash compact models", "ReRAM models", "PCM models", "FeFET models", "Memristor models", "Tunnel-FET models", "Organic transistor models"], "Model extraction": ["Parameter extraction", "I–V fitting", "C–V fitting", "RF parameter extraction", "Temperature extraction", "Statistical model extraction", "Model validation"]}, "Emerging Computing Paradigms": {"Neuromorphic computing": ["Spiking neural networks", "Synaptic devices", "Memristive crossbars", "Analog in-memory computing", "Event-driven processors", "Neuron circuits", "Learning rules", "Device variability"], "Quantum computing hardware": ["Superconducting qubits", "Spin qubits", "Quantum dots", "Silicon qubits", "Cryogenic CMOS", "Single-electron control", "Quantum error correction hardware", "Quantum interconnects"], "Spintronics": ["Giant magnetoresistance", "Tunnel magnetoresistance", "Magnetic tunnel junctions", "Spin-transfer torque", "Spin–orbit torque", "Domain-wall devices", "Skyrmions", "Spin logic"], "Photonic computing": ["Photonic accelerators", "Optical matrix multiplication", "Silicon photonic AI", "Electro-optic computing", "Photonic memory", "Optical neural networks", "Coherent photonic processors"], "Reversible and stochastic computing": ["Adiabatic logic", "Reversible logic", "Probabilistic bits", "Stochastic computing", "Approximate computing", "Ising machines"]}, "Semiconductor Safety and Cleanroom Practice": {"Cleanroom fundamentals": ["Cleanroom classes", "HEPA filtration", "Laminar flow", "Airborne molecular contamination", "Gowning", "Particle control", "Material compatibility", "Cleanroom behavior"], "Chemical safety": ["Acids", "Bases", "Solvents", "Photoresist chemicals", "Toxic gases", "Pyrophoric gases", "Corrosive gases", "Oxidizers", "Chemical labeling", "Spill response"], "Gas safety": ["Silane safety", "Phosphine safety", "Arsine safety", "Ammonia safety", "Hydrogen safety", "Gas cabinets", "Automatic shutdown", "Leak detection", "Scrubbers"], "Radiation and high-energy hazards": ["Ionizing radiation", "UV exposure", "Laser safety", "X-ray tool safety", "High voltage", "RF power", "Plasma hazards", "Implanter hazards"], "Ergonomics and operations": ["Lockout tagout", "Confined spaces", "Manual handling", "Emergency response", "Safety interlocks", "Permit-to-work", "Training and certification"]}, "History, Careers and Education": {"History of semiconductors": ["Crystal detectors", "Point-contact transistor", "Bipolar transistor", "Integrated circuit", "Planar process", "MOS transistor", "CMOS invention", "Microprocessor", "VLSI", "FinFET era", "EUV era", "Chiplet era"], "Semiconductor careers": ["Device engineer", "Process engineer", "Integration engineer", "Yield engineer", "Equipment engineer", "Product engineer", "Test engineer", "Packaging engineer", "Design engineer", "EDA engineer", "Reliability engineer", "Failure-analysis engineer"], "Education foundations": ["Semiconductor physics courses", "Microfabrication laboratories", "IC design courses", "Cleanroom training", "TCAD training", "SPICE training", "Layout training", "Packaging education", "Workforce apprenticeships"], "Research frontiers": ["Sub-2 nm logic", "Monolithic 3D integration", "Backside power delivery", "Atomic-scale patterning", "Hybrid bonding", "2D semiconductor integration", "Quantum semiconductor devices", "Sustainable semiconductor manufacturing"]}};
+  const branchDescriptions = {"Semiconductor Fundamentals": "Electronic structure, carriers, transport, statistics and junction electrostatics.", "Semiconductor Materials": "Elemental, compound, wide-bandgap, organic, 2D and emerging semiconductor materials.", "Diodes and Junction Devices": "PN junctions, special diodes, photodetectors and heterojunction devices.", "Transistors and Device Physics": "MOS, bipolar, power, RF and emerging transistor concepts.", "Memory Technologies": "Volatile, flash, emerging nonvolatile and memory-system technologies.", "Optoelectronics and Photonics": "LEDs, lasers, detectors, solar cells and integrated photonics.", "Analog, RF and Mixed-Signal ICs": "Analog building blocks, converters, RF circuits and timing systems.", "Digital Logic and Computer Architecture": "Logic gates, processors, low-power design and hardware security.", "EDA and Semiconductor Design Flow": "RTL, verification, synthesis, physical design, signoff and design methodologies.", "Process Integration": "FEOL, MOL, BEOL, CMOS integration and 3D integration.", "Lithography and Patterning": "DUV, EUV, masks, resists, computational lithography and alternative patterning.", "Thin-Film Deposition": "PVD, CVD, ALD, epitaxy, dielectric films and metal films.", "Etch, Clean and Surface Preparation": "Wet and dry etch, plasma chemistry, cleaning and atomic-layer etching.", "Doping and Thermal Processing": "Implantation, diffusion, annealing, oxidation and advanced doping.", "Chemical Mechanical Planarization": "CMP mechanics, slurries, pads, applications and defects.", "Metrology, Inspection and Characterization": "Dimensional, film, materials, electrical and failure-analysis methods.", "Yield, Defects and Statistical Process Control": "Defectivity, yield models, SPC, yield learning and design for yield.", "Semiconductor Equipment and Factory Automation": "Fab tools, vacuum, gas delivery, automation and equipment productivity.", "Packaging and Heterogeneous Integration": "Traditional and advanced packaging, chiplets, thermal management and integrity.", "Testing and Design for Test": "Wafer test, final test, DFT, fault models and reliability screening.", "Reliability and Qualification": "Intrinsic degradation, environmental stress, ESD, radiation and qualification.", "Power Electronics": "Power devices, converters, wide-bandgap electronics, modules and applications.", "Sensors, MEMS and Microsystems": "MEMS fabrication, inertial, pressure, chemical, imaging and acoustic devices.", "Compound Semiconductor Manufacturing": "III–V, SiC, GaN and optoelectronic manufacturing flows.", "Semiconductor Economics and Supply Chain": "Industry structure, economics, roadmaps, policy and sustainability.", "Modeling and Simulation": "TCAD, process, circuit, thermal, statistical and AI-assisted modeling.", "Compact Modeling": "Compact device models and parameter extraction for circuit simulation.", "Emerging Computing Paradigms": "Neuromorphic, quantum, spintronic, photonic and unconventional computing.", "Semiconductor Safety and Cleanroom Practice": "Cleanroom, chemical, gas, radiation and operational safety.", "History, Careers and Education": "Historical milestones, roles, training and research frontiers."};
+  const crossLinkPairs = [["Band structure", "Density of states"], ["Fermi level", "Carrier concentration"], ["Drift current", "Mobility"], ["Diffusion current", "Einstein relation"], ["Poisson equation", "TCAD"], ["PN junction diode", "Depletion approximation"], ["MOS capacitor", "Threshold voltage"], ["MOSFET fundamentals", "BSIM4"], ["FinFET", "BSIM-CMG"], ["Gate-all-around transistor", "Nanosheet FET"], ["Silicon-on-insulator", "Fully depleted SOI"], ["SiGe HBT", "RF circuits"], ["GaN HEMT", "Wide-bandgap power electronics"], ["SiC MOSFET", "Power conversion"], ["DRAM", "1T1C cell"], ["3D NAND", "Flash memory"], ["MRAM", "Magnetic tunnel junctions"], ["ReRAM", "Memristors"], ["Silicon photonics", "Optical interconnects"], ["CMOS image sensors", "Wafer test"], ["EUV lithography", "Computational lithography"], ["High-NA EUV", "Actinic inspection"], ["ALD cycles", "Atomic layer etching"], ["Area-selective ALD", "Self-aligned patterning"], ["Ion implantation", "Dopant activation"], ["Rapid thermal anneal", "Activation efficiency"], ["Copper interconnect", "Dual damascene"], ["Low-k dielectrics", "RC delay"], ["CMP fundamentals", "Dual damascene"], ["CD-SEM", "Critical-dimension metrology"], ["E-beam inspection", "Defect review"], ["SPC", "Advanced process control"], ["Virtual metrology", "Yield prediction"], ["Machine learning for EDA", "Generative layout"], ["Chiplets", "2.5D integration"], ["Hybrid bonding", "Die stacking"], ["Through-silicon vias", "3D integration"], ["Co-packaged optics", "Silicon photonics"], ["Electromigration", "Power integrity"], ["TDDB", "Gate-oxide wearout"], ["Radiation effects", "Single-event upset"], ["ESD clamps", "Human-body model"], ["MEMS fundamentals", "Wafer bonding"], ["SPAD arrays", "Time-of-flight sensors"], ["Foundries", "Fabless companies"], ["Wafer cost", "Yield economics"], ["Fab water use", "Water recycling"], ["Perfluorocarbon abatement", "Greenhouse-gas emissions"], ["Device simulation", "Compact models"], ["SPICE", "Verilog-A"], ["Quantum dots", "Quantum computing hardware"], ["Spin qubits", "Silicon qubits"], ["Photonic accelerators", "Integrated photonics"], ["Analog in-memory computing", "Memristive crossbars"], ["Backside power delivery", "Sub-2 nm logic"], ["Atomic-scale patterning", "Atomic layer etching"]];
+
+  const rootTitle = "Semiconductors";
+  const palette = [
+    "#57b7d8","#ef9c7b","#87c997","#b694df","#efc65e","#69aef0","#ed8db0",
+    "#98bf69","#70c2b7","#d39b6d","#8d9ee2","#dca4d1","#72ad88","#bea459",
+    "#78a5a1","#bc87c9","#edaa72","#91b0d2","#a3be7d","#d48787",
+    "#6fbccf","#a98fd5","#e3b866","#74b59b","#839bd8","#e098b8",
+    "#8db56e","#c88e64","#7caeb8","#b79a70"
+  ];
+
+  const allNodes = [];
+  const treeLinks = [];
+  const nodeById = new Map();
+  const nodesByTitle = new Map();
+  const branchColor = new Map();
+  const enabledBranches = new Set();
+  let serial = 0;
+
+  function slug(s) {
+    return s.toLowerCase().normalize("NFKD").replace(/[^\w]+/g,"-").replace(/^-|-$/g,"");
+  }
+
+  function registerTitle(node) {
+    const key = node.title.toLowerCase();
+    if (!nodesByTitle.has(key)) nodesByTitle.set(key, []);
+    nodesByTitle.get(key).push(node);
+  }
+
+  function makeNode(title, parent, branch, depth, description="") {
+    const id = parent ? `${parent.id}/${slug(title)}-${serial++}` : "semiconductor-root";
+    const node = {
+      id, title, parentId: parent ? parent.id : null, branch, depth, description,
+      childIds:[], path: parent ? [...parent.path, title] : [title],
+      expanded:false, pinned:false
+    };
+    allNodes.push(node); nodeById.set(id,node); registerTitle(node);
+    if (parent) {
+      parent.childIds.push(id);
+      treeLinks.push({source:parent.id,target:id,type:"tree"});
+    }
+    return node;
+  }
+
+  const root = makeNode(rootTitle, null, rootTitle, 0,
+    "A connected map of semiconductor science, devices, fabrication, design, packaging, testing, reliability, economics and emerging technologies.");
+
+  Object.entries(taxonomy).forEach(([branchName, groups], branchIndex) => {
+    branchColor.set(branchName, palette[branchIndex % palette.length]);
+    enabledBranches.add(branchName);
+    const branch = makeNode(branchName, root, branchName, 1, branchDescriptions[branchName] || "");
+    Object.entries(groups).forEach(([groupName, topics]) => {
+      const group = makeNode(groupName, branch, branchName, 2,
+        `${groupName} connects core concepts, tools, processes and applications within ${branchName.toLowerCase()}.`);
+      topics.forEach(topic => makeNode(topic, group, branchName, 3,
+        `${topic} is a topic within ${groupName.toLowerCase()} and the broader field of ${branchName.toLowerCase()}.`));
+    });
+  });
+
+  const crossLinks = [];
+  function bestTitleMatch(title) {
+    const exact = nodesByTitle.get(title.toLowerCase());
+    if (exact?.length) return exact[0];
+    const q = title.toLowerCase();
+    return allNodes.find(n => n.title.toLowerCase().includes(q) || q.includes(n.title.toLowerCase()));
+  }
+  crossLinkPairs.forEach(([a,b]) => {
+    const na=bestTitleMatch(a), nb=bestTitleMatch(b);
+    if (na && nb && na.id !== nb.id) crossLinks.push({source:na.id,target:nb.id,type:"cross"});
+  });
+
+  const svg = d3.select("#graph");
+  const viewport = svg.append("g").attr("class","viewport");
+  const linkLayer = viewport.append("g").attr("class","links");
+  const nodeLayer = viewport.append("g").attr("class","nodes");
+
+  let width=0, height=0, selected=root, visibleIds=new Set([root.id]);
+  let currentNodes=[], currentLinks=[];
+  let showCrossLinks=true, showLabels=true, labelSize=11;
+  let lastSearchHit=null;
+
+  const simulation = d3.forceSimulation()
+    .force("link", d3.forceLink().id(d=>d.id).distance(linkDistance).strength(d=>d.type==="tree" ? .80 : .12))
+    .force("charge", d3.forceManyBody().strength(chargeStrength))
+    .force("collide", d3.forceCollide().radius(d=>nodeRadius(d)+18).iterations(2))
+    .force("center", d3.forceCenter())
+    .force("x", d3.forceX(0).strength(.025))
+    .force("y", d3.forceY(0).strength(.025))
+    .alphaDecay(.035)
+    .velocityDecay(.33)
+    .on("tick", ticked);
+
+  function chargeStrength(d) {
+    if (d.depth===0) return -900;
+    if (d.depth===1) return +document.getElementById("charge").value * 1.2;
+    return +document.getElementById("charge").value;
+  }
+  function linkDistance(d) {
+    const base=+document.getElementById("distance").value;
+    if (d.type==="cross") return base*1.35;
+    const td = typeof d.target === "object" ? d.target.depth : nodeById.get(d.target)?.depth || 3;
+    return td===1 ? base*1.6 : td===2 ? base*1.12 : base*.82;
+  }
+  function nodeRadius(d) {
+    if (d.depth===0) return 24;
+    if (d.depth===1) return 16;
+    if (d.depth===2) return 10.5;
+    return 6.5;
+  }
+  function nodeColor(d) {
+    if (d.depth===0) return "#ffffff";
+    return branchColor.get(d.branch) || "#a8b2bf";
+  }
+  function labelFor(d) {
+    if (d.depth<=2) return d.title;
+    return d.title.length>31 ? d.title.slice(0,30)+"…" : d.title;
+  }
+
+  const zoom = d3.zoom()
+    .scaleExtent([.12,5])
+    .filter(event => !event.ctrlKey || event.type==="wheel")
+    .on("zoom", event => viewport.attr("transform",event.transform));
+  svg.call(zoom).on("dblclick.zoom", null);
+
+  function resize() {
+    const r=document.getElementById("graph-wrap").getBoundingClientRect();
+    width=Math.max(1,r.width); height=Math.max(1,r.height);
+    svg.attr("viewBox",`0 0 ${width} ${height}`);
+    simulation.force("center",d3.forceCenter(width/2,height/2));
+    simulation.force("x",d3.forceX(width/2).strength(.025));
+    simulation.force("y",d3.forceY(height/2).strength(.025));
+    simulation.alpha(.25).restart();
+  }
+  new ResizeObserver(resize).observe(document.getElementById("graph-wrap"));
+
+  function branchEnabled(node) {
+    return node.depth===0 || enabledBranches.has(node.branch);
+  }
+
+  function revealAncestors(node) {
+    let n=node;
+    while (n) {
+      visibleIds.add(n.id);
+      if (n.parentId) {
+        const p=nodeById.get(n.parentId);
+        p.expanded=true;
+        n=p;
+      } else break;
+    }
+  }
+
+  function revealChildren(node, recursiveDepth=1) {
+    visibleIds.add(node.id);
+    if (recursiveDepth<=0) return;
+    node.expanded=true;
+    node.childIds.forEach(id => {
+      const child=nodeById.get(id);
+      if (branchEnabled(child)) {
+        visibleIds.add(id);
+        revealChildren(child,recursiveDepth-1);
+      }
+    });
+  }
+
+  function hideDescendants(node) {
+    node.expanded=false;
+    node.childIds.forEach(id => {
+      const child=nodeById.get(id);
+      child.expanded=false;
+      hideDescendants(child);
+      visibleIds.delete(id);
+    });
+  }
+
+  function overview() {
+    visibleIds=new Set([root.id]);
+    allNodes.forEach(n=>n.expanded=false);
+    root.expanded=true;
+    root.childIds.forEach(id=> {
+      const n=nodeById.get(id);
+      if (branchEnabled(n)) visibleIds.add(id);
+    });
+    selected=root;
+    updateGraph(true);
+    setTimeout(fitGraph,180);
+  }
+
+  function showDepth(depth) {
+    visibleIds=new Set();
+    allNodes.forEach(n=> {
+      n.expanded=n.depth<depth;
+      if (n.depth<=depth && branchEnabled(n)) visibleIds.add(n.id);
+    });
+    visibleIds.add(root.id);
+    updateGraph(true);
+    setTimeout(fitGraph,250);
+  }
+
+  function showAll() {
+    visibleIds=new Set(allNodes.filter(branchEnabled).map(n=>n.id));
+    visibleIds.add(root.id);
+    allNodes.forEach(n=>n.expanded=true);
+    updateGraph(true);
+    setTimeout(fitGraph,350);
+  }
+
+  function focusNode(node) {
+    visibleIds=new Set();
+    revealAncestors(node);
+    visibleIds.add(node.id);
+    revealChildren(node,2);
+    const parent=node.parentId ? nodeById.get(node.parentId) : null;
+    if (parent) parent.childIds.forEach(id=>visibleIds.add(id));
+    selected=node;
+    updateGraph(true);
+    setTimeout(()=>zoomToNode(node,1.35),180);
+  }
+
+  function visibleLinksFor(ids) {
+    const base=treeLinks.filter(l=>ids.has(typeof l.source==="object"?l.source.id:l.source) && ids.has(typeof l.target==="object"?l.target.id:l.target));
+    if (!showCrossLinks) return base;
+    return base.concat(crossLinks.filter(l=>ids.has(typeof l.source==="object"?l.source.id:l.source) && ids.has(typeof l.target==="object"?l.target.id:l.target)));
+  }
+
+  function updateGraph(reheat=false) {
+    const ids=new Set([...visibleIds].filter(id=>branchEnabled(nodeById.get(id))));
+    ids.add(root.id);
+    currentNodes=allNodes.filter(n=>ids.has(n.id));
+    currentLinks=visibleLinksFor(ids).map(l=>({
+      source:typeof l.source==="object"?l.source.id:l.source,
+      target:typeof l.target==="object"?l.target.id:l.target,
+      type:l.type
+    }));
+
+    const links=linkLayer.selectAll("line").data(currentLinks,d=>`${d.source.id||d.source}|${d.target.id||d.target}|${d.type}`);
+    links.exit().remove();
+    links.enter().append("line")
+      .attr("class",d=>`link ${d.type==="cross"?"cross":""}`)
+      .attr("stroke-width",d=>d.type==="cross"?1:1.3);
+
+    const nodes=nodeLayer.selectAll("g.node").data(currentNodes,d=>d.id);
+    nodes.exit().remove();
+
+    const enter=nodes.enter().append("g")
+      .attr("class","node")
+      .attr("tabindex",0)
+      .attr("role","button")
+      .attr("aria-label",d=>d.title)
+      .on("click",(event,d)=> {
+        event.stopPropagation();
+        selectNode(d);
+        if (d.childIds.length) {
+          if (d.expanded) hideDescendants(d); else revealChildren(d,1);
+          updateGraph(true);
+        }
+      })
+      .on("dblclick",(event,d)=> {
+        event.preventDefault(); event.stopPropagation(); focusNode(d);
+      })
+      .on("contextmenu",(event,d)=> {
+        event.preventDefault(); togglePin(d);
+      })
+      .on("keydown",(event,d)=> {
+        if (event.key==="Enter" || event.key===" ") {
+          event.preventDefault(); selectNode(d);
+          if (d.childIds.length) {
+            if (d.expanded) hideDescendants(d); else revealChildren(d,1);
+            updateGraph(true);
+          }
+        }
+      })
+      .call(d3.drag()
+        .on("start",(event,d)=> {
+          if (!event.active) simulation.alphaTarget(.25).restart();
+          d.fx=d.x; d.fy=d.y;
+        })
+        .on("drag",(event,d)=> { d.fx=event.x; d.fy=event.y; })
+        .on("end",(event,d)=> {
+          if (!event.active) simulation.alphaTarget(0);
+          if (!d.pinned) { d.fx=null; d.fy=null; }
+        }));
+
+    enter.append("circle").attr("r",nodeRadius).attr("fill",nodeColor);
+    enter.append("text").attr("class","node-label").attr("x",d=>nodeRadius(d)+5).attr("y",".32em").text(labelFor);
+
+    enter.filter(d=>d.childIds.length>0).append("circle")
+      .attr("class","count-badge").attr("r",6)
+      .attr("cx",d=>nodeRadius(d)-1).attr("cy",d=>-nodeRadius(d)+1);
+
+    enter.filter(d=>d.childIds.length>0).append("text")
+      .attr("class","count-text")
+      .attr("x",d=>nodeRadius(d)-1).attr("y",d=>-nodeRadius(d)+1)
+      .text(d=>d.expanded?"−":"+");
+
+    const merged=enter.merge(nodes);
+    merged.classed("selected",d=>d.id===selected?.id)
+      .classed("search-hit",d=>d.id===lastSearchHit?.id);
+    merged.select("circle:not(.count-badge)").attr("r",nodeRadius).attr("fill",nodeColor);
+    merged.select(".node-label")
+      .style("display",showLabels?null:"none")
+      .style("font-size",d=>`${Math.max(8,labelSize + (d.depth===0?3:d.depth===1?1:0))}px`)
+      .style("font-weight",d=>d.depth<=1?850:700)
+      .text(labelFor);
+    merged.select(".count-text").text(d=>d.expanded?"−":"+");
+
+    simulation.nodes(currentNodes);
+    simulation.force("link").links(currentLinks).distance(linkDistance);
+    simulation.force("charge").strength(chargeStrength);
+    simulation.force("collide").radius(d=>nodeRadius(d)+18);
+    if (reheat) simulation.alpha(Math.min(.95,.18+currentNodes.length/900)).restart();
+
+    document.getElementById("visible-count").textContent=currentNodes.length.toLocaleString();
+    document.getElementById("total-count").textContent=allNodes.length.toLocaleString();
+    document.getElementById("link-count").textContent=currentLinks.length.toLocaleString();
+    updateDetails();
+  }
+
+  function ticked() {
+    linkLayer.selectAll("line")
+      .attr("x1",d=>d.source.x).attr("y1",d=>d.source.y)
+      .attr("x2",d=>d.target.x).attr("y2",d=>d.target.y);
+    nodeLayer.selectAll("g.node").attr("transform",d=>`translate(${d.x},${d.y})`);
+  }
+
+  function selectNode(node) {
+    selected=node; lastSearchHit=null;
+    nodeLayer.selectAll(".node")
+      .classed("selected",d=>d.id===node.id)
+      .classed("search-hit",false);
+    updateDetails();
+  }
+
+  function updateDetails() {
+    if (!selected) return;
+    document.getElementById("detail-title").textContent=selected.title;
+    document.getElementById("detail-path").textContent=selected.path.join(" › ");
+    document.getElementById("breadcrumb").textContent=selected.path.join("  ›  ");
+    const fallback = selected.depth===0
+      ? "The central map connecting semiconductor materials, devices, fabrication, design, packaging, reliability and industry."
+      : selected.depth===1
+      ? branchDescriptions[selected.title] || selected.description
+      : selected.description;
+    document.getElementById("detail-description").textContent=fallback;
+    const crossCount=crossLinks.filter(l=> {
+      const s=typeof l.source==="object"?l.source.id:l.source;
+      const t=typeof l.target==="object"?l.target.id:l.target;
+      return s===selected.id||t===selected.id;
+    }).length;
+    const chips=[
+      `Level ${selected.depth}`,
+      `${selected.childIds.length} subtopic${selected.childIds.length===1?"":"s"}`,
+      `${crossCount} cross-link${crossCount===1?"":"s"}`,
+      selected.pinned?"Pinned":"Free"
+    ];
+    document.getElementById("detail-chips").innerHTML=chips.map(x=>`<span class="chip">${x}</span>`).join("");
+    document.getElementById("detail-expand").textContent=selected.expanded?"Collapse":"Expand";
+    document.getElementById("detail-pin").textContent=selected.pinned?"Unpin":"Pin";
+  }
+
+  function togglePin(node) {
+    node.pinned=!node.pinned;
+    if (node.pinned) { node.fx=node.x; node.fy=node.y; }
+    else { node.fx=null; node.fy=null; }
+    if (selected.id===node.id) updateDetails();
+  }
+
+  function fitGraph() {
+    if (!currentNodes.length) return;
+    const xs=currentNodes.map(d=>d.x).filter(Number.isFinite), ys=currentNodes.map(d=>d.y).filter(Number.isFinite);
+    if (!xs.length||!ys.length) return;
+    const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+    const dx=Math.max(80,maxX-minX+80), dy=Math.max(80,maxY-minY+80);
+    const scale=Math.max(.12,Math.min(2.3,.88/Math.max(dx/width,dy/height)));
+    const tx=width/2-scale*(minX+maxX)/2;
+    const ty=height/2-scale*(minY+maxY)/2;
+    svg.transition().duration(500).call(zoom.transform,d3.zoomIdentity.translate(tx,ty).scale(scale));
+  }
+
+  function zoomToNode(node,scale=1.8) {
+    if (!Number.isFinite(node.x)) return;
+    svg.transition().duration(450).call(zoom.transform,d3.zoomIdentity.translate(width/2-node.x*scale,height/2-node.y*scale).scale(scale));
+  }
+
+  function zoomBy(factor) {
+    svg.transition().duration(250).call(zoom.scaleBy,factor);
+  }
+
+  function searchNodes(query) {
+    const q=query.trim().toLowerCase();
+    if (!q) return [];
+    const terms=q.split(/\s+/).filter(Boolean);
+    return allNodes.map(n=> {
+      const hay=(n.title+" "+n.path.join(" ")).toLowerCase();
+      let score=0;
+      if (n.title.toLowerCase()===q) score+=100;
+      if (n.title.toLowerCase().startsWith(q)) score+=55;
+      if (n.title.toLowerCase().includes(q)) score+=30;
+      terms.forEach(t=>{ if(hay.includes(t)) score+=8; });
+      score-=n.depth*.4;
+      return {n,score};
+    }).filter(x=>x.score>0).sort((a,b)=>b.score-a.score||a.n.title.localeCompare(b.n.title)).slice(0,12).map(x=>x.n);
+  }
+
+  function renderResults(items) {
+    const box=document.getElementById("results");
+    if (!items.length) { box.style.display="none"; box.innerHTML=""; return; }
+    box.innerHTML=items.map(n=>`<div class="result" data-id="${n.id}" role="option">
+      <div class="result-title">${escapeHtml(n.title)}</div>
+      <div class="result-path">${escapeHtml(n.path.slice(1).join(" › "))}</div>
+    </div>`).join("");
+    box.style.display="block";
+    box.querySelectorAll(".result").forEach(el=>el.addEventListener("click",()=>chooseSearch(nodeById.get(el.dataset.id))));
+  }
+
+  function chooseSearch(node) {
+    revealAncestors(node);
+    visibleIds.add(node.id);
+    revealChildren(node,1);
+    selected=node; lastSearchHit=node;
+    updateGraph(true);
+    document.getElementById("results").style.display="none";
+    setTimeout(()=>zoomToNode(node,2),180);
+    if (window.innerWidth<=820) document.getElementById("panel").classList.remove("open");
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  }
+
+  function buildFilters() {
+    const holder=document.getElementById("category-filters");
+    holder.innerHTML=[...branchColor.keys()].map(name=>`
+      <label class="filter-row">
+        <input type="checkbox" data-branch="${escapeHtml(name)}" checked>
+        <span class="swatch" style="background:${branchColor.get(name)}"></span>
+        <span>${escapeHtml(name)}</span>
+      </label>`).join("");
+    holder.querySelectorAll("input").forEach(input=>input.addEventListener("change",()=> {
+      const b=input.dataset.branch;
+      if (input.checked) enabledBranches.add(b); else enabledBranches.delete(b);
+      updateGraph(true);
+    }));
+  }
+
+  function buildLegend() {
+    const holder=document.getElementById("legend");
+    holder.innerHTML=[...branchColor.entries()].map(([name,color])=>`
+      <div class="legend-item"><span class="swatch" style="background:${color}"></span><span title="${escapeHtml(name)}">${escapeHtml(name)}</span></div>`).join("");
+  }
+
+  document.getElementById("search").addEventListener("input",e=>renderResults(searchNodes(e.target.value)));
+  document.getElementById("search").addEventListener("keydown",e=> {
+    if (e.key==="Enter") {
+      const first=searchNodes(e.currentTarget.value)[0];
+      if (first) chooseSearch(first);
+    }
+  });
+  document.getElementById("search-clear").addEventListener("click",()=> {
+    const s=document.getElementById("search"); s.value=""; renderResults([]); s.focus();
+  });
+  document.addEventListener("click",e=> {
+    if (!e.target.closest(".search-wrap")) document.getElementById("results").style.display="none";
+  });
+  document.addEventListener("keydown",e=> {
+    if (e.key==="/" && !["INPUT","TEXTAREA"].includes(document.activeElement.tagName)) {
+      e.preventDefault(); document.getElementById("search").focus();
+      if (window.innerWidth<=820) document.getElementById("panel").classList.add("open");
+    }
+    if (e.key==="Escape") {
+      document.getElementById("panel").classList.remove("open");
+      document.getElementById("results").style.display="none";
+    }
+  });
+
+  document.getElementById("overview").onclick=overview;
+  document.getElementById("expand-selected").onclick=()=>{ revealChildren(selected,1); updateGraph(true); };
+  document.getElementById("collapse-selected").onclick=()=>{ hideDescendants(selected); updateGraph(true); };
+  document.getElementById("expand-depth").onclick=()=>showDepth(2);
+  document.getElementById("expand-all").onclick=showAll;
+  document.getElementById("fit").onclick=fitGraph;
+  document.getElementById("header-fit").onclick=fitGraph;
+  document.getElementById("detail-expand").onclick=()=> {
+    if(selected.expanded) hideDescendants(selected); else revealChildren(selected,1);
+    updateGraph(true);
+  };
+  document.getElementById("detail-focus").onclick=()=>focusNode(selected);
+  document.getElementById("detail-pin").onclick=()=>togglePin(selected);
+
+  document.getElementById("charge").addEventListener("input",e=> {
+    document.getElementById("charge-v").textContent=e.target.value;
+    simulation.force("charge").strength(chargeStrength); simulation.alpha(.6).restart();
+  });
+  document.getElementById("distance").addEventListener("input",e=> {
+    document.getElementById("distance-v").textContent=e.target.value;
+    simulation.force("link").distance(linkDistance); simulation.alpha(.6).restart();
+  });
+  document.getElementById("label-size").addEventListener("input",e=> {
+    labelSize=+e.target.value; document.getElementById("label-v").textContent=e.target.value; updateGraph(false);
+  });
+  document.getElementById("labels-toggle").addEventListener("change",e=>{showLabels=e.target.checked; updateGraph(false);});
+  document.getElementById("crosslinks-toggle").addEventListener("change",e=>{showCrossLinks=e.target.checked; updateGraph(true);});
+  document.getElementById("mobile-panel-toggle").onclick=()=>document.getElementById("panel").classList.toggle("open");
+  document.getElementById("zoom-in").onclick=()=>zoomBy(1.35);
+  document.getElementById("zoom-out").onclick=()=>zoomBy(.74);
+  document.getElementById("zoom-reset").onclick=()=>svg.transition().duration(350).call(zoom.transform,d3.zoomIdentity);
+
+  svg.on("click",()=>{ lastSearchHit=null; nodeLayer.selectAll(".node").classed("search-hit",false); });
+
+  buildFilters();
+  buildLegend();
+  overview();
+  resize();
+})();
+</script>
+</body>
+</html>
